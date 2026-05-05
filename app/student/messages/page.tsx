@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
 import { useSearchParams } from "next/navigation"
 import { Send, ImageIcon, Code, Mic, Star } from "lucide-react"
@@ -39,7 +39,8 @@ interface Contact {
   tutorProfileId?: string     // Menyimpan ID Profile Tutor (untuk tabel review)
 }
 
-export default function MessagesPage() {
+// 1. Ubah nama fungsi utama jadi MessagesContent dan hapus export default
+function MessagesContent() {
   const searchParams = useSearchParams()
   const newContactId = searchParams.get("newContact")
 
@@ -450,5 +451,18 @@ export default function MessagesPage() {
         </div>
       )}
     </>
+  )
+}
+
+// 2. Buat komponen export default baru sebagai wrapper Suspense
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center text-[#344675] font-bold">
+        Loading Messages...
+      </div>
+    }>
+      <MessagesContent />
+    </Suspense>
   )
 }

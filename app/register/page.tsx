@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -16,7 +16,8 @@ import registerImg from "@/components/register_img.png"
 
 type UserRole = "student" | "tutor"
 
-export default function RegisterPage() {
+// 1. Ubah nama fungsi asli menjadi RegisterContent (Hapus export default)
+function RegisterContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialRole = (searchParams.get("role") as UserRole) || "student"
@@ -303,5 +304,18 @@ export default function RegisterPage() {
         </Link>
       </div>
     </div>
+  )
+}
+
+// 2. Buat fungsi export default baru yang membungkus RegisterContent dengan Suspense
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#e8f1f8] flex items-center justify-center">
+        <div className="text-[#344675] font-medium">Loading...</div>
+      </div>
+    }>
+      <RegisterContent />
+    </Suspense>
   )
 }

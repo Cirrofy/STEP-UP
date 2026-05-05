@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Star, CheckCircle } from "lucide-react"
@@ -35,7 +35,8 @@ function PaymentSuccessModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
   )
 }
 
-export default function PaymentPage() {
+// 1. Ubah nama komponen utama menjadi PaymentContent
+function PaymentContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -307,5 +308,18 @@ export default function PaymentPage() {
       </main>
       <PaymentSuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} />
     </div>
+  )
+}
+
+// 2. Buat komponen default export yang membungkus konten dengan Suspense
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center text-[#344675] font-bold bg-[#e8f1f8]">
+        Memuat detail pembayaran...
+      </div>
+    }>
+      <PaymentContent />
+    </Suspense>
   )
 }
