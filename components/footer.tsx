@@ -43,7 +43,8 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
           {/* Logo */}
           <div className="col-span-2 md:col-span-1">
-            <StepUpLogo showTagline />
+            <StepUpLogo/>
+            {/* <StepUpLogo showTagline /> */}
           </div>
 
           {/* Links */}
