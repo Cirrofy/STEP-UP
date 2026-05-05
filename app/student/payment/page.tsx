@@ -77,11 +77,14 @@ export default function PaymentPage() {
         if (error) throw error
 
         if (profile) {
+          // FIX: Bypass TypeScript error untuk data relasi Supabase
+          const userData = profile.users as any;
+
           setTutorData({
             id: profile.id,
-            name: profile.users?.full_name || "Tutor",
+            name: userData?.full_name || "Tutor",
             price: Number(profile.price_per_hour),
-            image: profile.users?.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
+            image: userData?.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
             rating: 5, 
           })
 
