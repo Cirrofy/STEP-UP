@@ -23,6 +23,8 @@ export default function TutorProfilePage() {
   const [duration, setDuration] = useState<"1" | "2">("1")
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false)
 
+  const [bookingType, setBookingType] = useState<"single" | "subscription">("single")
+  
   const [tutorData, setTutorData] = useState<any>(null)
   const [availabilitiesTemplate, setAvailabilitiesTemplate] = useState<any[]>([])
   const [bookedLessons, setBookedLessons] = useState<any[]>([])
@@ -150,7 +152,7 @@ export default function TutorProfilePage() {
 
   const handleBookingContinue = (date: string, time: string, selectedDuration: string) => {
     setIsBookingModalOpen(false)
-    router.push(`/student/payment?tutorId=${tutorData.id}&date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}&duration=${selectedDuration}`)
+    router.push(`/student/payment?tutorId=${tutorData.id}&date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}&duration=${selectedDuration}&type=${bookingType}`)
   }
 
   // --- LOGIKA FILTER TABEL (WAKTU LAMPAU & BOOKING) ---
@@ -418,14 +420,25 @@ export default function TutorProfilePage() {
               <p className="text-sm font-medium text-gray-500 mt-1">60 Minutes Per Session</p>
 
               <div className="space-y-3 mt-8">
+                {/* Tombol Booking Biasa */}
                 <Button 
                   className="w-full bg-[#7492c9] hover:bg-[#5b78b0] text-white font-bold h-12 rounded-md transition-all shadow-sm"
-                  onClick={() => setIsBookingModalOpen(true)}
+                  onClick={() => { setBookingType("single"); setIsBookingModalOpen(true); }}
                 >
-                  Request Booking
+                  Request Single Booking
                 </Button>
-                <Link href={`/student/messages?newContact=${tutorUserId}`} className="w-full block">
-                  <Button variant="outline" className="w-full border-2 border-[#344675] text-[#344675] hover:bg-[#d4e1f4] font-bold h-12 rounded-full transition-all">
+
+                {/* Tombol Subscription Baru */}
+                <Button 
+                  className="w-full bg-[#d4e1f4] text-[#344675] hover:bg-[#c2d4ec] font-bold h-12 rounded-md transition-all shadow-sm border border-[#aabce6]"
+                  onClick={() => { setBookingType("subscription"); setIsBookingModalOpen(true); }}
+                >
+                  Subscribe 1 Month (1 meet/week)
+                </Button>
+
+                {/* Tombol Pesan */}
+                <Link href={`/student/messages?newContact=${tutorUserId}`} className="w-full block pt-2">
+                  <Button variant="outline" className="w-full border-2 border-[#344675] text-[#344675] hover:bg-[#f4f7f9] font-bold h-12 rounded-full transition-all">
                     Send Message
                   </Button>
                 </Link>

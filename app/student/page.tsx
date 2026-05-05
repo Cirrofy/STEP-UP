@@ -62,11 +62,11 @@ export default function StudentHomePage() {
           setStudentName(userData.full_name.split(' ')[0]) // Ambil nama depan saja
         }
 
-        // 2. Ambil Upcoming Lessons
+        // 2. Ambil Upcoming Lessons (TAMBAHAN: tutor_id disertakan di sini)
         const { data: lessonsData } = await supabase
           .from('lessons')
           .select(`
-            id, schedule_date, start_time, end_time, status,
+            id, schedule_date, start_time, end_time, status, tutor_id,
             tutor_profiles (
               subject_taught,
               users ( full_name, avatar_url )
@@ -114,11 +114,11 @@ export default function StudentHomePage() {
           setDaysUntilNext(diffDays)
         }
 
-        // 3. Ambil Subscriptions
+        // 3. Ambil Subscriptions (TAMBAHAN: tutor_id ditarik)
         const { data: subsData } = await supabase
           .from('subscriptions')
           .select(`
-            id, status, lessons_left, renewal_date,
+            id, status, renewal_date, tutor_id,
             tutor_profiles (
               subject_taught,
               users ( full_name, avatar_url )
@@ -130,6 +130,9 @@ export default function StudentHomePage() {
           const tutorInfo = sub.tutor_profiles?.users
           const isCanceled = sub.status.toLowerCase() === 'canceled'
           
+          // KUNCI PERBAIKAN: Hitung kelas yang tersisa untuk tutor ini langsung dari lessonsData
+          const remainingLessons = lessonsData?.filter((lesson: any) => lesson.tutor_id === sub.tutor_id).length || 0
+
           // Format tanggal pembaruan jika ada
           let renewDateStr = ""
           if (sub.renewal_date) {
@@ -144,7 +147,8 @@ export default function StudentHomePage() {
             subject: sub.tutor_profiles?.subject_taught || "General",
             status: isCanceled ? "Canceled" : "Active",
             lessonsInfo: isCanceled ? "No Lessons Left" : "All Lessons Scheduled",
-            renewInfo: isCanceled || !renewDateStr ? "" : `Subscription To ${sub.lessons_left} Lessons renews Automatically On ${renewDateStr}`,
+            // Tampilkan jumlah kelas aktif (remainingLessons)
+            renewInfo: isCanceled || !renewDateStr ? "" : `Subscription To ${remainingLessons} Lessons renews Automatically On ${renewDateStr}`,
             tutorImage: tutorInfo?.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop"
           }
         }) || []

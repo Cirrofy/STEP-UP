@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
-import { Star, CheckCircle } from "lucide-react"
+import { Star, CheckCircle, Repeat } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { StepUpLogo } from "@/components/step-up-logo"
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
-function PaymentSuccessModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function PaymentSuccessModal({ isOpen, onClose, isSub }: { isOpen: boolean; onClose: () => void; isSub: boolean }) {
   if (!isOpen) return null
 
   return (
@@ -24,7 +24,9 @@ function PaymentSuccessModal({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           </div>
           <h2 className="text-2xl font-bold text-[#344675] mb-2">Payment Successful!</h2>
           <p className="text-muted-foreground mb-6">
-            Your lesson has been booked successfully. You will be redirected to the homepage.
+            {isSub 
+              ? "Your 1-Month Subscription has been confirmed! 4 lessons have been added to your schedule." 
+              : "Your lesson has been booked successfully."} You will be redirected to the homepage.
           </p>
           <Button onClick={onClose} className="bg-[#7492c9] text-white hover:bg-[#5b78b0] font-bold">
             Go to Homepage
@@ -46,6 +48,10 @@ function PaymentContent() {
   const lessonDate = searchParams.get("date") || "April 28, 2026" 
   const lessonTime = searchParams.get("time") || "16.00" 
   const paramDuration = searchParams.get("duration") || "1"
+  
+  // Ambil tipe booking dari URL
+  const bookingType = searchParams.get("type") || "single"
+  const isSubscription = bookingType === "subscription"
 
   const [duration, setDuration] = useState<"1" | "2">(paramDuration as "1" | "2")
   const [showSuccessModal, setShowSuccessModal] = useState(false)
@@ -104,8 +110,10 @@ function PaymentContent() {
     fetchCheckoutData()
   }, [tutorId, supabase, toast])
 
+  // --- KALKULASI HARGA ---
   const price = tutorData?.price || 0
-  const total = price * parseInt(duration)
+  const sessionCount = isSubscription ? 4 : 1 // 4 Minggu jika subs, 1 jika single
+  const total = price * parseInt(duration) * sessionCount
 
   const formatTimeForDB = (timeStr: string, addHours: number = 0) => {
     const hour = parseInt(timeStr.split('.')[0]) + addHours
@@ -129,24 +137,46 @@ function PaymentContent() {
     setIsProcessing(true)
 
     try {
-      // 1. Buat Jadwal Baru (Insert ke tabel lessons)
-      const { error: lessonError } = await supabase
-        .from('lessons')
-        .insert({
+      const baseDate = new Date(lessonDate)
+      const lessonsToInsert = []
+
+      // Generate 1 atau 4 jadwal tergantung status subscription
+      for (let i = 0; i < sessionCount; i++) {
+        const scheduleDate = new Date(baseDate)
+        scheduleDate.setDate(scheduleDate.getDate() + (i * 7)) // Tambah 7 hari tiap loop (mingguan)
+        scheduleDate.setMinutes(scheduleDate.getMinutes() - scheduleDate.getTimezoneOffset()) // Fix Timezone Offset
+
+        lessonsToInsert.push({
           student_id: studentId,
           tutor_id: tutorData.id,
-          schedule_date: formatDateForDB(lessonDate),
+          schedule_date: scheduleDate.toISOString().split('T')[0],
           start_time: formatTimeForDB(lessonTime),
           end_time: formatTimeForDB(lessonTime, parseInt(duration)),
           duration_hours: parseInt(duration),
-          total_price: total,
+          total_price: price * parseInt(duration), // Harga PER pertemuan untuk record lessons
           status: 'Upcoming'
         })
+      }
 
+      // 1. Insert ke tabel lessons (1 atau 4 row sekaligus)
+      const { error: lessonError } = await supabase.from('lessons').insert(lessonsToInsert)
       if (lessonError) throw lessonError
 
-      // 2. Tambahkan Saldo Tutor
-      // Ambil saldo saat ini terlebih dahulu
+      // 2. Jika Subscription, masukkan juga ke tabel subscriptions
+      if (isSubscription) {
+        const renewalDate = new Date(baseDate)
+        renewalDate.setMonth(renewalDate.getMonth() + 1) // 1 bulan dari sekarang
+        renewalDate.setMinutes(renewalDate.getMinutes() - renewalDate.getTimezoneOffset())
+
+        await supabase.from('subscriptions').insert({
+          student_id: studentId,
+          tutor_id: tutorData.id,
+          status: 'Active',
+          renewal_date: renewalDate.toISOString().split('T')[0]
+        })
+      }
+
+      // 3. Tambahkan Saldo Tutor
       const { data: tutorProfile, error: profileError } = await supabase
         .from('tutor_profiles')
         .select('balance')
@@ -157,7 +187,6 @@ function PaymentContent() {
 
       const currentBalance = Number(tutorProfile?.balance) || 0
 
-      // Update dengan saldo baru
       const { error: updateBalanceError } = await supabase
         .from('tutor_profiles')
         .update({ balance: currentBalance + total })
@@ -165,7 +194,7 @@ function PaymentContent() {
 
       if (updateBalanceError) throw updateBalanceError
 
-      // 3. Tampilkan Modal Sukses
+      // 4. Tampilkan Modal Sukses
       setShowSuccessModal(true)
       
     } catch (err: any) {
@@ -226,15 +255,22 @@ function PaymentContent() {
 
             <Card className="border-none shadow-md">
               <CardContent className="p-6">
-                <h3 className="font-bold text-[#344675] mb-4">Trial Lesson Details</h3>
+                <h3 className="font-bold text-[#344675] mb-4">
+                  {isSubscription ? "Subscription Starting Date" : "Trial Lesson Details"}
+                </h3>
                 <div className="flex items-center gap-4">
                   <div className="text-center px-4 py-2 bg-[#d4e1f4] rounded-lg border border-[#aabce6]">
                     <p className="text-xs text-[#344675] font-semibold">{dateParts[0]}</p>
                     <p className="text-2xl font-bold text-[#344675]">{dateParts[1]}</p>
                   </div>
                   <div>
-                    <p className="font-bold text-[#344675]">Lesson Date: {lessonDate} <br/> {lessonTime}-{parseInt(lessonTime) + parseInt(duration)}.00</p>
-                    <p className="text-sm text-gray-500 font-medium">Don&apos;t Forget To Join The Meet!</p>
+                    <p className="font-bold text-[#344675]">
+                      {isSubscription ? "First Lesson" : "Lesson Date"}: {lessonDate} <br/> 
+                      {lessonTime}-{parseInt(lessonTime) + parseInt(duration)}.00
+                    </p>
+                    <p className="text-sm text-gray-500 font-medium">
+                      {isSubscription ? "Repeats every week at this time." : "Don't Forget To Join The Meet!"}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -242,19 +278,33 @@ function PaymentContent() {
 
             <Card className="border-none shadow-md">
               <CardContent className="p-6">
-                <h3 className="font-bold text-[#344675] mb-4">Checkout Info</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-[#344675]">Checkout Info</h3>
+                  {isSubscription && (
+                    <span className="flex items-center gap-1 text-xs font-bold bg-[#d4e1f4] text-[#344675] px-2 py-1 rounded">
+                      <Repeat className="w-3 h-3" /> 1 Month Plan
+                    </span>
+                  )}
+                </div>
+                
                 <div className="flex border-b-2 border-gray-100 mb-4">
-                  <button onClick={() => setDuration("1")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "1" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>1 Hour</button>
-                  <button onClick={() => setDuration("2")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "2" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>2 Hours</button>
+                  <button onClick={() => setDuration("1")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "1" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>1 Hour / Session</button>
+                  <button onClick={() => setDuration("2")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "2" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>2 Hours / Session</button>
                 </div>
 
                 <div className="space-y-4 mt-6">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#344675] font-semibold">{duration === "1" ? "1 Hour" : "2 Hours"} Lesson</span>
-                    <span className="font-bold text-[#344675]">Rp {price.toLocaleString('id-ID')}</span>
+                  <div className="flex justify-between items-center text-[#344675]">
+                    <span className="font-semibold">Rate per Session ({duration} Hr)</span>
+                    <span className="font-bold">Rp {(price * parseInt(duration)).toLocaleString('id-ID')}</span>
                   </div>
+                  {isSubscription && (
+                    <div className="flex justify-between items-center text-[#344675]">
+                      <span className="font-semibold">Number of Sessions (1 Month)</span>
+                      <span className="font-bold">x 4 Weeks</span>
+                    </div>
+                  )}
                   <div className="flex justify-between pt-4 border-t-2 border-gray-100">
-                    <span className="font-bold text-[#344675] text-lg">Total</span>
+                    <span className="font-bold text-[#344675] text-lg">Total Amount</span>
                     <span className="font-bold text-[#344675] text-lg">Rp {total.toLocaleString('id-ID')}</span>
                   </div>
                 </div>
@@ -278,7 +328,7 @@ function PaymentContent() {
                 </Button>
 
                 <p className="text-xs text-gray-500 mt-6 leading-relaxed font-medium">
-                  By Pressing The &quot;Book Lesson And Pay · Rp {total.toLocaleString('id-ID')}&quot; Button, You Agree To STEP-UP&apos;S <a href="#" className="underline text-gray-600 font-bold">Refund And Payment Policy</a>
+                  By Pressing The Button, You Agree To STEP-UP&apos;S <a href="#" className="underline text-gray-600 font-bold">Refund And Payment Policy</a>
                 </p>
                 <p className="text-xs text-gray-500 mt-3 leading-relaxed font-medium">
                   It&apos;s Safe To Pay On STEP-UP. All Transactions Are Protected By SSL Encryption.
@@ -306,7 +356,7 @@ function PaymentContent() {
           </div>
         </div>
       </main>
-      <PaymentSuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} />
+      <PaymentSuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} isSub={isSubscription} />
     </div>
   )
 }

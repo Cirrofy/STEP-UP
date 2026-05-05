@@ -37,6 +37,7 @@ interface Contact {
   subtitle?: string
   isBookedTutor: boolean      // Penanda apakah ini tutor yang sudah di-booking
   tutorProfileId?: string     // Menyimpan ID Profile Tutor (untuk tabel review)
+  hasReviewed?: boolean
 }
 
 // 1. Ubah nama fungsi utama jadi MessagesContent dan hapus export default
@@ -76,6 +77,13 @@ function MessagesContent() {
         const contactsMap = new Map<string, Contact>()
         const bookedTutorsMap = new Map<string, string>() // Map untuk user_id -> tutor_profile_id
 
+        const { data: myReviews } = await supabase
+          .from('reviews')
+          .select('tutor_id')
+          .eq('student_id', myId)
+        
+        const reviewedTutorsSet = new Set(myReviews?.map(r => r.tutor_id))
+        
         // 1. Ambil Tutor dari kelas yang sudah dibooking TERLEBIH DAHULU
         const { data: bookedLessons } = await supabase
           .from('lessons')
@@ -103,7 +111,8 @@ function MessagesContent() {
                 lastMessageDate: new Date(0), // Set 1970 agar ke paling bawah
                 subtitle: `Tutor for ${lesson.tutor_profiles.subject_taught}`,
                 isBookedTutor: true,
-                tutorProfileId: profileId
+                tutorProfileId: profileId,
+                hasReviewed: reviewedTutorsSet.has(profileId)
               })
             }
           }
@@ -392,11 +401,17 @@ function MessagesContent() {
               {/* Tampilkan Tombol Review HANYA JIKA Tutor Sudah di-booking */}
               {selectedContact.isBookedTutor && (
                 <Button 
-                  variant="outline" 
-                  onClick={() => setIsReviewModalOpen(true)}
-                  className="w-full border-2 border-[#7492c9] text-[#7492c9] hover:bg-[#e8f1f8] font-bold rounded-full h-12"
+                  variant={selectedContact.hasReviewed ? "ghost" : "outline"}
+                  onClick={() => !selectedContact.hasReviewed && setIsReviewModalOpen(true)}
+                  disabled={selectedContact.hasReviewed}
+                  className={cn(
+                    "w-full font-bold rounded-full h-12",
+                    selectedContact.hasReviewed 
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed border-none" 
+                      : "border-2 border-[#7492c9] text-[#7492c9] hover:bg-[#e8f1f8]"
+                  )}
                 >
-                  Post Review
+                  {selectedContact.hasReviewed ? "Review Submitted" : "Post Review"}
                 </Button>
               )}
             </div>
