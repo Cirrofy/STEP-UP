@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import Image from "next/image"
 import { Camera, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,8 @@ import { StudentSubmenu } from "@/components/student/student-submenu"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
-export default function StudentEditProfilePage() {
+// 1. Ubah nama komponen utama menjadi Content
+function StudentEditProfileContent() {
   const supabase = createClient()
   const { toast } = useToast()
   
@@ -215,5 +216,14 @@ export default function StudentEditProfilePage() {
         </Card>
       </main>
     </>
+  )
+}
+
+// 2. Buat pembungkus Suspense di ekspor utama
+export default function StudentEditProfilePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[#344675] font-bold">Loading Page...</div>}>
+      <StudentEditProfileContent />
+    </Suspense>
   )
 }
