@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+// 1. Tambahkan Suspense dari react
+import { useState, useEffect, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Plus, Trash2, Camera, AlertCircle } from "lucide-react"
@@ -25,7 +26,8 @@ const reverseDaysMap = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 
 type ResumeItem = { id?: string, time_period: string, description: string }
 
-export default function EditProfilePage() {
+// 2. Ubah nama komponen utama menjadi EditProfileContent
+function EditProfileContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isSetupMode = searchParams.get("setup") === "true"
@@ -54,7 +56,7 @@ export default function EditProfilePage() {
   const [subjectTaught, setSubjectTaught] = useState("")
   const [educationLevel, setEducationLevel] = useState("")
   const [pricePerHour, setPricePerHour] = useState<number | "">("")
-  const [yearsExperience, setYearsExperience] = useState<number | "">("") // State baru untuk pengalaman
+  const [yearsExperience, setYearsExperience] = useState<number | "">("")
 
   // Array of Text States
   const [specializations, setSpecializations] = useState<string[]>([""])
@@ -216,7 +218,7 @@ export default function EditProfilePage() {
         languages: cleanLanguages,
         city: city,
         price_per_hour: pricePerHour,
-        years_experience: yearsExperience, // <-- Simpan ke DB
+        years_experience: yearsExperience,
         short_description: description,
         about_me: aboutYou,
         profile_video_url: profileVideo
@@ -254,7 +256,6 @@ export default function EditProfilePage() {
 
       toast({ title: "Profile Saved!", description: "Your profile has been updated successfully." })
       
-      // Jika dalam mode setup (baru daftar), redirect ke home setelah berhasil
       if (isSetupMode) {
         setTimeout(() => router.push('/tutor'), 1500)
       }
@@ -270,7 +271,6 @@ export default function EditProfilePage() {
 
   return (
     <main className="px-6 py-8 md:px-12 max-w-6xl mx-auto">
-      {/* Peringatan Wajib Isi Profil untuk Tutor Baru */}
       {isSetupMode && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg mb-8 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
@@ -517,5 +517,14 @@ export default function EditProfilePage() {
         </Button>
       </div>
     </main>
+  )
+}
+
+// 3. Buat pembungkus Suspense di ekspor utama
+export default function EditProfilePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[#344675] font-bold">Loading Editor...</div>}>
+      <EditProfileContent />
+    </Suspense>
   )
 }
