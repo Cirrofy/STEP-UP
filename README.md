@@ -17,7 +17,7 @@ Anggota:
 ### A. Deskripsi
 STEP-UP adalah platform edukasi berbasis peer-to-peer yang dirancang untuk menghubungkan mahasiswa (Student) dengan pengajar (Tutor) secara efisien. Platform ini fokus pada kemudahan akses pembelajaran melalui sistem booking jadwal yang dinamis, transparansi biaya, dan sistem manajemen pembelajaran yang terintegrasi. STEP-UP memungkinkan penggunanya untuk mencari tutor berdasarkan keahlian spesifik dan mengelola sesi belajar melalui dashboard yang intuitif.
 
-Layanan ini dikembangkan dengan mengintegrasikan Supabase sebagai *Backend-as-a-Service* untuk menangani autentikasi pengguna, penyimpanan data relasional, serta manajemen file gambar.
+Layanan ini dikembangkan dengan mengintegrasikan Supabase sebagai *Backend-as-a-Service* untuk menangani autentikasi pengguna, penyimpanan data relasional, serta manajemen file gambar. Adapun *website* ini dibuat dengan bantuan AI v0 by vercel untuk *Frontend* dan Gemini Pro untuk algoritma dan *debugging*. 
 
 ### B. Fitur Utama
 1. **Smart Tutor Discovery**: Fitur pencarian dan filter tutor berdasarkan subjek (Matematika, Fisika, Coding, dll), tingkat pendidikan, dan rating rata-rata yang akurat (rating 1-5).
