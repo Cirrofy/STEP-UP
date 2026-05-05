@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
-const allTimeSlots = ["07.00", "08.00", "09.00", "10.00", "11.00", "12.00", "13.00", "14.00", "15.00", "16.00", "17.00", "18.00", "19.00", "20.00", "21.00", "22.00", "23.00"]
+const allTimeSlots = ["00.00", "01.00", "02.00", "03.00", "04.00", "05.00", "06.00", "07.00", "08.00", "09.00", "10.00", "11.00", "12.00", "13.00", "14.00", "15.00", "16.00", "17.00", "18.00", "19.00", "20.00", "21.00", "22.00", "23.00"]
 
 export default function TutorProfilePage() {
   const router = useRouter()
@@ -104,28 +104,28 @@ export default function TutorProfilePage() {
         const totalRating = reviewsData?.reduce((sum: number, rev: any) => sum + rev.rating, 0) || 0
         const avgRating = reviewsData && reviewsData.length > 0 ? Number((totalRating / reviewsData.length).toFixed(1)) : 0
 
-        // Format data profil
+        // Format data profil dengan pengaman (Fallback) untuk data kosong
         const formattedTutor = {
           id: profileData.id, 
-          name: profileData.users?.full_name || "Unknown",
-          subject: profileData.subject_taught,
-          level: profileData.education_level,
-          tagline: profileData.short_description,
+          name: profileData.users?.full_name || "New Tutor",
+          subject: profileData.subject_taught || "Subject Not Set",
+          level: profileData.education_level || "Level Not Set",
+          tagline: profileData.short_description || "This tutor hasn't set a tagline yet.",
           experience: `${profileData.years_experience || 0}+ Years`,
           lessonsTaught: `${profileData.lessons_taught || 0}+`,
           responseTime: "< 2 Hours",
           rating: avgRating,
           reviewCount: reviewsData?.length || 0,
-          price: profileData.price_per_hour,
+          // KUNCI PERBAIKAN: Memaksa nilai menjadi Angka. Jika null, ubah jadi 0.
+          price: Number(profileData.price_per_hour) || 0, 
           image: profileData.users?.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop",
-          about: profileData.about_me,
+          about: profileData.about_me || "This tutor hasn't written an about me section yet.",
           specializations: profileData.specializations || [],
-          // UBAH: Educations sekarang jadi ARRAY agar bisa di map lebih dari 1
           educations: resumeData?.map(edu => ({
             institution: edu.description,
             years: edu.time_period
           })) || [],
-          languages: profileData.languages?.join(" • ") || "",
+          languages: profileData.languages?.join(" • ") || "Not specified",
           reviews: reviewsData?.map(rev => ({
             id: rev.id,
             name: rev.users?.full_name,
@@ -177,8 +177,9 @@ export default function TutorProfilePage() {
   if (!tutorData) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
-        <p className="text-xl font-bold text-[#344675]">Tutor not found!</p>
-        <Link href="/student/find-tutors"><Button variant="outline">Back to Find Tutors</Button></Link>
+        <p className="text-xl font-bold text-[#344675]">This tutor is still setting up their profile!</p>
+        <p className="text-gray-500">Please check back later.</p>
+        <Link href="/student/find-tutors"><Button variant="outline" className="mt-2">Back to Find Tutors</Button></Link>
       </div>
     )
   }

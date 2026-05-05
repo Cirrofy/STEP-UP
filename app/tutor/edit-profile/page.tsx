@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
-import { Plus, Trash2, Camera } from "lucide-react"
+import { Plus, Trash2, Camera, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -25,6 +26,10 @@ const reverseDaysMap = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 type ResumeItem = { id?: string, time_period: string, description: string }
 
 export default function EditProfilePage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const isSetupMode = searchParams.get("setup") === "true"
+
   const supabase = createClient()
   const { toast } = useToast()
   
@@ -45,10 +50,11 @@ export default function EditProfilePage() {
   const [profileVideo, setProfileVideo] = useState("")
   const [avatarUrl, setAvatarUrl] = useState("https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop")
   
-  // Dropdown States
+  // Dropdown & Number States
   const [subjectTaught, setSubjectTaught] = useState("")
   const [educationLevel, setEducationLevel] = useState("")
-  const [pricePerHour, setPricePerHour] = useState<number>(0)
+  const [pricePerHour, setPricePerHour] = useState<number | "">("")
+  const [yearsExperience, setYearsExperience] = useState<number | "">("") // State baru untuk pengalaman
 
   // Array of Text States
   const [specializations, setSpecializations] = useState<string[]>([""])
@@ -73,7 +79,7 @@ export default function EditProfilePage() {
           if (userData.avatar_url) setAvatarUrl(userData.avatar_url)
         }
 
-        const { data: profileData } = await supabase.from('tutor_profiles').select('*').eq('user_id', currentUserId).single()
+        const { data: profileData } = await supabase.from('tutor_profiles').select('*').eq('user_id', currentUserId).maybeSingle()
 
         if (profileData) {
           setProfileId(profileData.id)
@@ -83,7 +89,9 @@ export default function EditProfilePage() {
           setDescription(profileData.short_description || "")
           setAboutYou(profileData.about_me || "")
           setProfileVideo(profileData.profile_video_url || "")
-          setPricePerHour(Number(profileData.price_per_hour) || 0)
+          
+          if (profileData.price_per_hour) setPricePerHour(Number(profileData.price_per_hour))
+          if (profileData.years_experience) setYearsExperience(Number(profileData.years_experience))
 
           if (profileData.specializations?.length) setSpecializations(profileData.specializations)
           if (profileData.languages?.length) setLanguages(profileData.languages)
@@ -117,40 +125,26 @@ export default function EditProfilePage() {
     fetchProfileData()
   }, [supabase])
 
-  // --- FUNGSI UNGGAH FOTO ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!e.target.files || e.target.files.length === 0) return
-      if (!userId) {
-        toast({ variant: "destructive", title: "Error", description: "You must be logged in to upload." })
-        return
-      }
+      if (!userId) return
 
       const file = e.target.files[0]
       const fileExt = file.name.split('.').pop()
-      const fileName = `${userId}-${Date.now()}.${fileExt}` // Format nama file unik
+      const fileName = `${userId}-${Date.now()}.${fileExt}` 
       const filePath = `${fileName}`
 
       setIsUploading(true)
 
-      // Upload ke Supabase Storage bucket 'avatars'
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file)
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file)
       if (uploadError) throw uploadError
 
-      // Dapatkan URL publik dari foto yang baru diunggah
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath)
-
-      // Perbarui state lokal UI
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
       setAvatarUrl(publicUrl)
       toast({ title: "Image Uploaded!", description: "Don't forget to save your profile." })
 
     } catch (error: any) {
-      console.error("Upload Error:", error)
       toast({ variant: "destructive", title: "Upload Failed", description: error.message })
     } finally {
       setIsUploading(false)
@@ -193,17 +187,25 @@ export default function EditProfilePage() {
 
   const handleSaveProfile = async () => {
     if (!userId) { toast({ variant: "destructive", title: "Error", description: "You are not logged in!" }); return }
+
+    // --- VALIDASI WAJIB ONBOARDING ---
+    const isAvailabilityEmpty = Object.values(availability).every(daySlots => daySlots.length === 0)
+    
+    if (!subjectTaught || !educationLevel || !pricePerHour || pricePerHour <= 0 || yearsExperience === "" || yearsExperience < 0 || isAvailabilityEmpty) {
+      toast({ 
+        variant: "destructive", 
+        title: "Incomplete Profile", 
+        description: "Please fill in your Subject, Level, Hourly Rate, Experience, and at least 1 Schedule Availability before saving." 
+      })
+      return
+    }
+
     setIsSaving(true)
 
     try {
-      // Perbarui tabel users (SIMPAN JUGA AVATAR BARU DI SINI)
-      await supabase.from('users').update({ 
-        full_name: name,
-        avatar_url: avatarUrl 
-      }).eq('id', userId)
+      await supabase.from('users').update({ full_name: name, avatar_url: avatarUrl }).eq('id', userId)
 
       let currentProfileId = profileId
-
       const cleanSpecializations = specializations.filter(s => s.trim() !== "")
       const cleanLanguages = languages.filter(s => s.trim() !== "")
 
@@ -214,6 +216,7 @@ export default function EditProfilePage() {
         languages: cleanLanguages,
         city: city,
         price_per_hour: pricePerHour,
+        years_experience: yearsExperience, // <-- Simpan ke DB
         short_description: description,
         about_me: aboutYou,
         profile_video_url: profileVideo
@@ -250,8 +253,13 @@ export default function EditProfilePage() {
       if (availabilityInserts.length > 0) await supabase.from('tutor_availabilities').insert(availabilityInserts)
 
       toast({ title: "Profile Saved!", description: "Your profile has been updated successfully." })
+      
+      // Jika dalam mode setup (baru daftar), redirect ke home setelah berhasil
+      if (isSetupMode) {
+        setTimeout(() => router.push('/tutor'), 1500)
+      }
+
     } catch (error: any) {
-      console.error("Save Error:", JSON.stringify(error, null, 2))
       toast({ variant: "destructive", title: "Error Saving Profile", description: error?.message || "Failed to save." })
     } finally {
       setIsSaving(false)
@@ -262,23 +270,29 @@ export default function EditProfilePage() {
 
   return (
     <main className="px-6 py-8 md:px-12 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold text-[#344675] text-center mb-8">Edit Profile</h1>
+      {/* Peringatan Wajib Isi Profil untuk Tutor Baru */}
+      {isSetupMode && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg mb-8 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-bold">Welcome to STEP-UP!</h3>
+            <p className="text-sm">Before you can start teaching and access your dashboard, please complete your profile. The fields marked with an asterisk (*) are mandatory.</p>
+          </div>
+        </div>
+      )}
 
-      {/* --- UI Foto Profil yang Bisa Diklik --- */}
+      <h1 className="text-3xl font-bold text-[#344675] text-center mb-8">{isSetupMode ? "Complete Your Profile" : "Edit Profile"}</h1>
+
       <div className="flex flex-col items-center justify-center mb-10">
         <div 
           className="relative w-36 h-36 rounded-full overflow-hidden border-4 border-[#e8f1f8] shadow-md group cursor-pointer"
           onClick={() => fileInputRef.current?.click()}
         >
           <Image src={avatarUrl} alt="Profile" width={144} height={144} className="object-cover w-full h-full" />
-          
-          {/* Overlay Hover */}
           <div className="absolute inset-0 bg-[#344675]/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
             <Camera className="w-8 h-8 text-white mb-1" />
             <span className="text-white text-xs font-bold">Change</span>
           </div>
-
-          {/* Loading State Overlay */}
           {isUploading && (
             <div className="absolute inset-0 bg-[#344675]/80 flex flex-col items-center justify-center">
               <span className="text-white text-sm font-bold animate-pulse">Uploading...</span>
@@ -286,76 +300,80 @@ export default function EditProfilePage() {
           )}
         </div>
         <p className="text-sm text-gray-500 mt-3 font-medium">Click to update your photo</p>
-
-        {/* Input file disembunyikan */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImageUpload}
-          accept="image/png, image/jpeg, image/jpg, image/webp"
-          className="hidden"
-        />
+        <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Left Column */}
         <div className="space-y-6">
           <div>
-            <label className="block font-bold text-[#344675] mb-2">Name</label>
+            <label className="block font-bold text-[#344675] mb-2">Name *</label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="bg-white border-gray-200" />
-          </div>
-
-          <div>
-            <label className="block font-bold text-[#344675] mb-2">Subject Taught</label>
-            <Select value={subjectTaught} onValueChange={setSubjectTaught}>
-              <SelectTrigger className="w-full bg-white border-gray-200">
-                <SelectValue placeholder="Select Subject" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Math">Math</SelectItem>
-                <SelectItem value="Physics">Physics</SelectItem>
-                <SelectItem value="Biology">Biology</SelectItem>
-                <SelectItem value="Chemistry">Chemistry</SelectItem>
-                <SelectItem value="English">English</SelectItem>
-                <SelectItem value="Coding">Coding</SelectItem>
-                <SelectItem value="Others">Others</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <label className="block font-bold text-[#344675] mb-2">Education Level</label>
-            <Select value={educationLevel} onValueChange={setEducationLevel}>
-              <SelectTrigger className="w-full bg-white border-gray-200">
-                <SelectValue placeholder="Select Level" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Elementary">Elementary</SelectItem>
-                <SelectItem value="Junior High School">Junior High School</SelectItem>
-                <SelectItem value="High School">High School</SelectItem>
-                <SelectItem value="University">University</SelectItem>
-                <SelectItem value="Public">Public (All Ages)</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block font-bold text-[#344675] mb-2">City</label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} className="bg-white border-gray-200" />
+              <label className="block font-bold text-[#344675] mb-2">Subject Taught *</label>
+              <Select value={subjectTaught} onValueChange={setSubjectTaught}>
+                <SelectTrigger className="w-full bg-white border-gray-200">
+                  <SelectValue placeholder="Select Subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Math">Math</SelectItem>
+                  <SelectItem value="Physics">Physics</SelectItem>
+                  <SelectItem value="Biology">Biology</SelectItem>
+                  <SelectItem value="Chemistry">Chemistry</SelectItem>
+                  <SelectItem value="English">English</SelectItem>
+                  <SelectItem value="Coding">Coding</SelectItem>
+                  <SelectItem value="Others">Others</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <label className="block font-bold text-[#344675] mb-2">Hourly Rate (Rp)</label>
+              <label className="block font-bold text-[#344675] mb-2">Education Level *</label>
+              <Select value={educationLevel} onValueChange={setEducationLevel}>
+                <SelectTrigger className="w-full bg-white border-gray-200">
+                  <SelectValue placeholder="Select Level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Elementary">Elementary</SelectItem>
+                  <SelectItem value="Junior High School">Junior High School</SelectItem>
+                  <SelectItem value="High School">High School</SelectItem>
+                  <SelectItem value="University">University</SelectItem>
+                  <SelectItem value="Public">Public (All Ages)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-1">
+              <label className="block font-bold text-[#344675] mb-2 text-sm whitespace-nowrap">Experience (Years) *</label>
+              <Input 
+                type="number" 
+                value={yearsExperience} 
+                onChange={(e) => setYearsExperience(e.target.value === "" ? "" : Number(e.target.value))} 
+                className="bg-white border-gray-200" 
+                min={0}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block font-bold text-[#344675] mb-2 text-sm">Hourly Rate (Rp) *</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rp</span>
                 <Input 
                   type="number" 
                   value={pricePerHour} 
-                  onChange={(e) => setPricePerHour(Number(e.target.value))} 
+                  onChange={(e) => setPricePerHour(e.target.value === "" ? "" : Number(e.target.value))} 
                   className="bg-white border-gray-200 pl-10" 
+                  min={0}
                 />
               </div>
             </div>
+          </div>
+          
+          <div>
+            <label className="block font-bold text-[#344675] mb-2">City</label>
+            <Input value={city} onChange={(e) => setCity(e.target.value)} className="bg-white border-gray-200" />
           </div>
 
           <div>
@@ -454,8 +472,8 @@ export default function EditProfilePage() {
 
       {/* Calendar Matrix */}
       <div className="mt-10">
-        <h3 className="font-bold text-[#344675] text-xl mb-2">Weekly Schedule Availability</h3>
-        <p className="text-gray-500 mb-6 font-medium">Select the hours you are typically available to teach each week.</p>
+        <h3 className="font-bold text-[#344675] text-xl mb-2">Weekly Schedule Availability *</h3>
+        <p className="text-gray-500 mb-6 font-medium">Select the hours you are typically available to teach each week. (Required)</p>
         <Card className="border-none shadow-md overflow-hidden">
           <CardContent className="p-0 overflow-x-auto">
             <table className="w-full text-sm">

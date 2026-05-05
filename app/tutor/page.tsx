@@ -6,6 +6,7 @@ import { Clock, RefreshCw, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/client"
 
@@ -38,6 +39,7 @@ interface Earnings {
 }
 
 export default function TutorHomePage() {
+  const router = useRouter()
   const [tutorName, setTutorName] = useState("Tutor")
   const [nextLesson, setNextLesson] = useState<Lesson | null>(null)
   const [upcomingLessons, setUpcomingLessons] = useState<Lesson[]>([])
@@ -69,12 +71,20 @@ export default function TutorHomePage() {
           setTutorName(userData.full_name.split(' ')[0])
         }
 
-        // 2. Ambil Profile Tutor (Balance & Subject)
+        // 2. Ambil Profile Tutor
+        // Gunakan maybeSingle() agar tidak error jika profil benar-benar belum ada (tutor baru)
         const { data: profile } = await supabase
           .from('tutor_profiles')
-          .select('id, subject_taught, balance')
+          .select('id, subject_taught, balance, price_per_hour')
           .eq('user_id', userId)
-          .single()
+          .maybeSingle()
+
+        // --- LOGIKA ONBOARDING / FORCED SETUP ---
+        // Jika profil belum ada di database ATAU data wajibnya masih kosong
+        if (!profile || !profile.subject_taught || !profile.price_per_hour) {
+          router.push('/tutor/edit-profile?setup=true')
+          return // Hentikan eksekusi fetch data dashboard
+        }
 
         if (!profile) throw new Error("Profile not found")
 
