@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, KeyRound, Eye, EyeOff, User } from "lucide-react"
@@ -14,7 +14,8 @@ import { useToast } from "@/hooks/use-toast"
 
 type UserRole = "student" | "tutor"
 
-export default function LoginPage() {
+// 1. Ubah nama fungsi asli menjadi LoginContent (Hapus export default)
+function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialRole = searchParams.get("role") as UserRole || "student"
@@ -223,5 +224,18 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// 2. Buat fungsi export default baru yang membungkus LoginContent dengan Suspense
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-primary font-medium">Loading...</div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }
