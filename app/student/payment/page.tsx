@@ -221,9 +221,6 @@ function PaymentContent() {
 
   return (
     <div className="min-h-screen bg-[#e8f1f8]">
-      <header className="px-6 py-4 md:px-12 bg-[#e8f1f8]">
-        <StepUpLogo />
-      </header>
 
       <main className="px-6 py-8 md:px-12">
         <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
@@ -329,7 +326,7 @@ function PaymentContent() {
             <Card className="border-none shadow-md bg-white">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <h3 className="font-bold text-[#344675]">{tutorData.name} Is A Great Choice</h3>
+                  <h3 className="font-bold text-[#344675]">Reviews for {tutorData.name}</h3>
                   <span className="text-sm font-semibold text-gray-500">{reviewCount} Reviews</span>
                 </div>
                 <div className="p-4 bg-[#f4f7f9] border border-gray-100 rounded-lg">

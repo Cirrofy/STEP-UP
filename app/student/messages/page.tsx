@@ -2,8 +2,9 @@
 
 import { useState, useEffect, Suspense } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Send, ImageIcon, Code, Mic, Star } from "lucide-react"
+import { Send, ImageIcon, Code, Mic, Star, BookOpen, X, FileText, Link2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { StudentSubmenu } from "@/components/student/student-submenu"
@@ -35,12 +36,19 @@ interface Contact {
   lastMessage: string
   lastMessageDate: Date
   subtitle?: string
-  isBookedTutor: boolean      // Penanda apakah ini tutor yang sudah di-booking
-  tutorProfileId?: string     // Menyimpan ID Profile Tutor (untuk tabel review)
+  isBookedTutor: boolean      
+  tutorProfileId?: string     
   hasReviewed?: boolean
 }
 
-// 1. Ubah nama fungsi utama jadi MessagesContent dan hapus export default
+interface Material {
+  id: string
+  title: string
+  description: string | null
+  material_type: "file" | "link"
+  url: string
+}
+
 function MessagesContent() {
   const searchParams = useSearchParams()
   const newContactId = searchParams.get("newContact")
@@ -62,6 +70,11 @@ function MessagesContent() {
   const [reviewText, setReviewText] = useState("")
   const [isSubmittingReview, setIsSubmittingReview] = useState(false)
 
+  // Materials Modal States
+  const [isMaterialsModalOpen, setIsMaterialsModalOpen] = useState(false)
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(false)
+
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -75,7 +88,7 @@ function MessagesContent() {
         setCurrentUserId(myId)
 
         const contactsMap = new Map<string, Contact>()
-        const bookedTutorsMap = new Map<string, string>() // Map untuk user_id -> tutor_profile_id
+        const bookedTutorsMap = new Map<string, string>() 
 
         const { data: myReviews } = await supabase
           .from('reviews')
@@ -84,7 +97,7 @@ function MessagesContent() {
         
         const reviewedTutorsSet = new Set(myReviews?.map(r => r.tutor_id))
         
-        // 1. Ambil Tutor dari kelas yang sudah dibooking TERLEBIH DAHULU
+        // 1. Ambil Tutor dari kelas yang sudah dibooking
         const { data: bookedLessons } = await supabase
           .from('lessons')
           .select(`
@@ -108,7 +121,7 @@ function MessagesContent() {
                 name: tutorUser.full_name || "Tutor",
                 image: tutorUser.avatar_url || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
                 lastMessage: "No messages yet. Start a conversation!",
-                lastMessageDate: new Date(0), // Set 1970 agar ke paling bawah
+                lastMessageDate: new Date(0), 
                 subtitle: `Tutor for ${lesson.tutor_profiles.subject_taught}`,
                 isBookedTutor: true,
                 tutorProfileId: profileId,
@@ -118,7 +131,7 @@ function MessagesContent() {
           }
         })
 
-        // 2. Ambil Riwayat Pesan (Menumpuk data di atas Tutor yang sudah di map)
+        // 2. Ambil Riwayat Pesan
         const { data: messagesData } = await supabase
           .from('messages')
           .select(`
@@ -127,7 +140,7 @@ function MessagesContent() {
             receiver:receiver_id ( id, full_name, avatar_url )
           `)
           .or(`sender_id.eq.${myId},receiver_id.eq.${myId}`)
-          .order('created_at', { ascending: true }) // Gunakan ascending agar pesan TERBARU menimpa pesan LAMA
+          .order('created_at', { ascending: true }) 
 
         if (messagesData) {
           setAllMessages(messagesData as any[])
@@ -147,7 +160,6 @@ function MessagesContent() {
                 tutorProfileId: bookedTutorsMap.get(otherPersonId)
               })
             } else {
-              // Jika sudah ada (entah dari pesan lama atau dari booked lesson), PERBARUI last message
               const existingContact = contactsMap.get(otherPersonId)!
               existingContact.lastMessage = msg.content
               existingContact.lastMessageDate = new Date(msg.created_at)
@@ -166,12 +178,11 @@ function MessagesContent() {
               lastMessage: "No messages yet. Start a conversation!",
               lastMessageDate: new Date(),
               subtitle: "New Contact",
-              isBookedTutor: false // Karena tidak ada di tabel lesson, maka false
+              isBookedTutor: false 
             })
           }
         }
 
-        // Urutkan berdasarkan waktu pesan terbaru
         const contactsArray = Array.from(contactsMap.values()).sort((a, b) => b.lastMessageDate.getTime() - a.lastMessageDate.getTime())
         setContacts(contactsArray)
 
@@ -213,7 +224,7 @@ function MessagesContent() {
       if (error) throw error
 
       if (data) {
-        setAllMessages((prev) => [...prev, data as any]) // Tambahkan ke paling akhir
+        setAllMessages((prev) => [...prev, data as any]) 
         setContacts((prevContacts) => {
           return prevContacts.map(c => 
             c.id === selectedContactId 
@@ -258,6 +269,9 @@ function MessagesContent() {
       setReviewText("")
       setReviewRating(5)
 
+      // Update local state untuk menandai tutor ini sudah di-review
+      setContacts((prev) => prev.map(c => c.id === selectedContactId ? { ...c, hasReviewed: true } : c))
+
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error submitting review", description: error.message })
     } finally {
@@ -265,9 +279,31 @@ function MessagesContent() {
     }
   }
 
+  // Aksi Membuka Modal Materials
+  const handleOpenMaterials = async () => {
+    const selectedContact = contacts.find(c => c.id === selectedContactId)
+    if (!selectedContact?.tutorProfileId) return
+
+    setIsMaterialsModalOpen(true)
+    setIsLoadingMaterials(true)
+    try {
+      const { data, error } = await supabase
+        .from('tutor_materials')
+        .select('id, title, description, material_type, url')
+        .eq('tutor_id', selectedContact.tutorProfileId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setMaterials(data || [])
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: "Gagal memuat materi pembelajaran." })
+    } finally {
+      setIsLoadingMaterials(false)
+    }
+  }
+
   const selectedContact = contacts.find(c => c.id === selectedContactId)
   
-  // Urutkan pesan dari yang lama ke yang terbaru
   const currentChatMessages = allMessages
     .filter(msg => 
       (msg.sender_id === currentUserId && msg.receiver_id === selectedContactId) ||
@@ -325,7 +361,6 @@ function MessagesContent() {
                 <h2 className="text-lg font-bold text-[#344675]">{selectedContact.name}</h2>
               </div>
 
-              {/* flex-col-reverse dihapus, pesan lama di atas, turun ke bawah (wajar) */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col">
                 {currentChatMessages.map((msg) => {
                   const isMe = msg.sender_id === currentUserId
@@ -388,45 +423,110 @@ function MessagesContent() {
             <div className="w-32 h-32 rounded-full overflow-hidden mb-6 border-4 border-[#f4f7f9] shadow-sm">
               <Image src={selectedContact.image} alt={selectedContact.name} width={128} height={128} className="object-cover w-full h-full" />
             </div>
-            <h2 className="text-xl font-bold text-[#344675] mb-8">{selectedContact.name}</h2>
+            <h2 className="text-xl font-bold text-[#344675] mb-8 text-center">{selectedContact.name}</h2>
             
             <div className="w-full space-y-3">
-              <Button className="w-full bg-[#7492c9] hover:bg-[#5b78b0] text-white font-bold rounded-full h-12">
-                Add Extra Lessons
-              </Button>
-              <Button variant="outline" className="w-full border-2 border-[#344675] text-[#344675] hover:bg-[#d4e1f4] font-bold rounded-full h-12">
-                Enter Classroom
-              </Button>
-
-              {/* Tampilkan Tombol Review HANYA JIKA Tutor Sudah di-booking */}
-              {selectedContact.isBookedTutor && (
-                <Button 
-                  variant={selectedContact.hasReviewed ? "ghost" : "outline"}
-                  onClick={() => !selectedContact.hasReviewed && setIsReviewModalOpen(true)}
-                  disabled={selectedContact.hasReviewed}
-                  className={cn(
-                    "w-full font-bold rounded-full h-12",
-                    selectedContact.hasReviewed 
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed border-none" 
-                      : "border-2 border-[#7492c9] text-[#7492c9] hover:bg-[#e8f1f8]"
-                  )}
-                >
-                  {selectedContact.hasReviewed ? "Review Submitted" : "Post Review"}
+              <Link href={`/student/find-tutors/${selectedContact.id}`}>
+                <Button className="w-full bg-[#7492c9] hover:bg-[#5b78b0] text-white font-bold rounded-full h-12 mb-3">
+                  Add Extra Lessons
                 </Button>
+              </Link>
+
+              {/* Tampilkan Tombol View Materials & Review HANYA JIKA Tutor Sudah di-booking */}
+              {selectedContact.isBookedTutor && (
+                <>
+                  {/* TOMBOL BARU: View Materials */}
+                  <Button 
+                    variant="outline" 
+                    onClick={handleOpenMaterials}
+                    className="w-full border-2 border-[#344675] text-[#344675] hover:bg-[#d4e1f4] font-bold rounded-full h-12 flex items-center justify-center gap-2"
+                  >
+                    <BookOpen className="w-4 h-4" /> View Materials
+                  </Button>
+
+                  <Button 
+                    variant={selectedContact.hasReviewed ? "ghost" : "outline"}
+                    onClick={() => !selectedContact.hasReviewed && setIsReviewModalOpen(true)}
+                    disabled={selectedContact.hasReviewed}
+                    className={cn(
+                      "w-full font-bold rounded-full h-12 flex items-center justify-center gap-2",
+                      selectedContact.hasReviewed 
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed border-none" 
+                        : "border-2 border-[#7492c9] text-[#7492c9] hover:bg-[#e8f1f8]"
+                    )}
+                  >
+                    <Star className={cn("w-4 h-4", selectedContact.hasReviewed ? "text-gray-300" : "fill-current")} />
+                    {selectedContact.hasReviewed ? "Review Submitted" : "Post Review"}
+                  </Button>
+                </>
               )}
             </div>
           </div>
         )}
       </main>
 
-      {/* --- REVIEW MODAL POP-UP --- */}
+      {/* --- POPUP 1: MATERIALS MODAL --- */}
+      {isMaterialsModalOpen && selectedContact && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <Card className="w-full max-w-lg shadow-2xl rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b bg-[#f4f7f9] flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-[#344675] text-lg">Materi Pembelajaran</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Disediakan oleh {selectedContact.name}</p>
+              </div>
+              <button onClick={() => setIsMaterialsModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <CardContent className="p-6 max-h-[400px] overflow-y-auto space-y-3">
+              {isLoadingMaterials ? (
+                <div className="py-8 text-center text-gray-500 text-sm font-semibold flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Mengambil dokumen materi...
+                </div>
+              ) : materials.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-sm bg-gray-50 rounded-lg border border-dashed">
+                  Tutor belum mengunggah berkas materi untuk kelas ini.
+                </div>
+              ) : (
+                materials.map((item) => (
+                  <div key={item.id} className="p-4 border rounded-xl bg-white flex items-start gap-4 hover:border-[#7492c9] transition-colors group">
+                    <div className="w-9 h-9 bg-[#f4f7f9] text-[#7492c9] rounded-lg flex items-center justify-center shrink-0">
+                      {item.material_type === "file" ? <FileText className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-[#344675] text-sm truncate">{item.title}</h4>
+                      {item.description && <p className="text-xs text-gray-400 line-clamp-2 mt-1 leading-normal">{item.description}</p>}
+                      <a 
+                        href={item.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-block text-xs font-bold text-[#7492c9] hover:underline mt-2"
+                      >
+                        Unduh / Buka Tautan →
+                      </a>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* --- POPUP 2: REVIEW MODAL --- */}
       {isReviewModalOpen && selectedContact && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4 shadow-xl">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <Card className="w-full max-w-md shadow-2xl rounded-xl border border-gray-100 overflow-hidden bg-white">
+            <div className="px-6 py-4 border-b bg-[#f4f7f9] flex items-center justify-between">
+              <h3 className="font-bold text-[#344675] text-lg">Berikan Review</h3>
+              <button onClick={() => setIsReviewModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <CardContent className="p-6">
               <div className="text-center mb-6">
-                <h3 className="text-2xl font-bold text-[#344675] mb-2">Review {selectedContact.name}</h3>
-                <p className="text-sm text-gray-500">How was your learning experience?</p>
+                <p className="text-sm font-semibold text-gray-600 mb-1">Bagaimana pengalaman belajar Anda bersama</p>
+                <p className="font-bold text-[#7492c9] text-base">{selectedContact.name}?</p>
               </div>
               
               <div className="flex justify-center gap-2 mb-6">
@@ -434,7 +534,7 @@ function MessagesContent() {
                   <Star
                     key={star}
                     className={cn(
-                      "w-10 h-10 cursor-pointer transition-colors", 
+                      "w-10 h-10 cursor-pointer transition-transform active:scale-95", 
                       star <= reviewRating ? "fill-yellow-400 text-yellow-400" : "text-gray-200 hover:text-yellow-200"
                     )}
                     onClick={() => setReviewRating(star)}
@@ -445,20 +545,20 @@ function MessagesContent() {
               <textarea
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                placeholder="Write your review here... (e.g., Great tutor, explains clearly!)"
+                placeholder="Tulis ulasan Anda di sini... (Contoh: Penjelasan kakak sangat mudah dipahami!)"
                 className="w-full h-32 p-3 border border-gray-200 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-[#7492c9] text-[#344675] mb-6"
               />
 
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setIsReviewModalOpen(false)} className="font-bold border-gray-300">
-                  Cancel
+              <div className="flex justify-end gap-3 border-t pt-4">
+                <Button variant="ghost" onClick={() => setIsReviewModalOpen(false)} disabled={isSubmittingReview}>
+                  Batal
                 </Button>
                 <Button 
                   onClick={handleSubmitReview} 
                   disabled={isSubmittingReview || !reviewText.trim()} 
-                  className="bg-[#7492c9] text-white hover:bg-[#5b78b0] font-bold"
+                  className="bg-[#7492c9] text-white hover:bg-[#5b78b0] font-bold min-w-[120px]"
                 >
-                  {isSubmittingReview ? "Submitting..." : "Submit Review"}
+                  {isSubmittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Review"}
                 </Button>
               </div>
             </CardContent>
@@ -469,7 +569,6 @@ function MessagesContent() {
   )
 }
 
-// 2. Buat komponen export default baru sebagai wrapper Suspense
 export default function MessagesPage() {
   return (
     <Suspense fallback={

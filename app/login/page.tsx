@@ -8,13 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StepUpLogo } from "@/components/step-up-logo"
 
-// Import client Supabase dan hook toast
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
 type UserRole = "student" | "tutor"
 
-// 1. Ubah nama fungsi asli menjadi LoginContent (Hapus export default)
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -25,7 +23,6 @@ function LoginContent() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   
-  // Tambahkan state loading dan inisialisasi hooks
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
   const supabase = createClient()
@@ -35,39 +32,61 @@ function LoginContent() {
     setIsLoading(true)
 
     try {
-      // 1. Proses login menggunakan Supabase Auth
+      // 1. Proses login bawaan Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
       })
 
       if (error) throw error
+      if (!data.user) return
 
-      // 2. Ambil role asli dari metadata user untuk memastikan routing yang akurat
-      // (Data ini kita simpan saat Register sebelumnya)
-      const actualRole = data.user.user_metadata.role || role
+      // 2. POS PEMERIKSAAN KEDUA (Mengecek langsung ke Database - Paling Akurat)
+      const { data: tutorProfile } = await supabase
+        .from('tutor_profiles')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .single()
 
-      // 3. Tampilkan notifikasi sukses
+      // Jika data ditemukan = Dia Tutor. Jika null = Dia Student.
+      const isActuallyTutor = !!tutorProfile
+
+      // Validasi silang
+      if (role === "student" && isActuallyTutor) {
+        await supabase.auth.signOut()
+        throw new Error("Akun ini terdaftar sebagai Tutor. Silakan pilih tab login Tutor.")
+      } else if (role === "tutor" && !isActuallyTutor) {
+        await supabase.auth.signOut()
+        throw new Error("Akun ini terdaftar sebagai Student. Silakan pilih tab login Student.")
+      }
+
+      // 3. Jika validasi lolos, berikan akses
       toast({
         title: "Login Successful!",
         description: "Welcome back to STEP-UP.",
       })
 
-      // 4. Redirect sesuai role asli dari database
-      if (actualRole === "student") {
-        router.push("/student") // Mengarah ke dashboard student
+      if (role === "student") {
+        router.push("/student/my-lessons")
       } else {
-        router.push("/tutor") // Mengarah ke dashboard tutor
+        router.push("/tutor")
       }
 
     } catch (error: any) {
       console.error("Login error:", error)
+      
+      // FIX: Menangkap teks error dengan aman agar Toast tidak pernah kosong
+      let errorMessage = error?.message || error?.error_description || "Terjadi kesalahan saat login."
+      
+      // Terjemahkan error bahasa Inggris dari Supabase ke bahasa yang ramah
+      if (errorMessage.includes("Invalid login credentials")) {
+        errorMessage = "Email atau password salah. Silakan coba lagi."
+      }
+
       toast({
         variant: "destructive",
-        title: "Login Failed",
-        description: error.message === "Invalid login credentials" 
-          ? "Email atau password salah. Silakan coba lagi." 
-          : error.message,
+        title: "Login Gagal",
+        description: errorMessage,
       })
     } finally {
       setIsLoading(false)
@@ -80,24 +99,19 @@ function LoginContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header with logo */}
       <div className="p-6">
         <StepUpLogo />
       </div>
 
-      {/* Main content */}
       <div className="flex-1 flex items-center justify-center px-4 pb-8">
         <div className="w-full max-w-md">
-          {/* Login Card */}
           <div className="bg-card rounded-2xl shadow-lg p-8 border border-border">
-            {/* User Icon */}
             <div className="flex justify-center mb-4">
               <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center">
                 <User className="w-8 h-8 text-primary" />
               </div>
             </div>
 
-            {/* Title */}
             <h1 className="text-2xl font-bold text-primary text-center mb-2">
               Welcome Back
             </h1>
@@ -105,9 +119,7 @@ function LoginContent() {
               {subtitle}
             </p>
 
-            {/* Login Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Email Field */}
               <div>
                 <label className="block text-sm font-semibold text-primary mb-2">
                   Email
@@ -125,7 +137,6 @@ function LoginContent() {
                 </div>
               </div>
 
-              {/* Password Field */}
               <div>
                 <label className="block text-sm font-semibold text-primary mb-2">
                   Password
@@ -150,7 +161,6 @@ function LoginContent() {
                 </div>
               </div>
 
-              {/* Role Selection */}
               <div>
                 <label className="block text-sm font-semibold text-primary mb-2">
                   Login As
@@ -181,16 +191,14 @@ function LoginContent() {
                 </div>
               </div>
 
-              {/* Login Button */}
               <Button
                 type="submit"
                 className="w-full bg-accent hover:bg-accent/90 text-accent-foreground py-3 rounded-lg font-medium h-12"
                 disabled={isLoading}
               >
-                Login
+                {isLoading ? "Memeriksa Akun..." : "Login"}
               </Button>
 
-              {/* Forgot Password */}
               <div className="text-center">
                 <Link href="#" className="text-primary font-medium hover:underline">
                   Forgot Password?
@@ -198,10 +206,8 @@ function LoginContent() {
               </div>
             </form>
 
-            {/* Divider */}
             <div className="my-6 border-t border-border"></div>
 
-            {/* Register Link */}
             <p className="text-center text-foreground">
               {"Don't Have An Account? "}
               <Link href="/register" className="text-primary font-semibold hover:underline">
@@ -210,7 +216,6 @@ function LoginContent() {
             </p>
           </div>
 
-          {/* Back Button */}
           <div className="mt-8">
             <Link href="/">
               <Button
@@ -227,7 +232,6 @@ function LoginContent() {
   )
 }
 
-// 2. Buat fungsi export default baru yang membungkus LoginContent dengan Suspense
 export default function LoginPage() {
   return (
     <Suspense fallback={

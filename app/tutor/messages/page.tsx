@@ -334,9 +334,9 @@ export default function TutorMessagesPage() {
           </div>
           <h2 className="text-2xl font-bold text-[#344675] mb-8">{selectedContact.name}</h2>
           
-          <Button variant="outline" className="w-full border-2 border-[#344675] text-[#344675] rounded-full hover:bg-[#d4e1f4] font-bold h-12">
+          {/* <Button variant="outline" className="w-full border-2 border-[#344675] text-[#344675] rounded-full hover:bg-[#d4e1f4] font-bold h-12">
             Enter Classroom
-          </Button>
+          </Button> */}
         </div>
       )}
     </main>
