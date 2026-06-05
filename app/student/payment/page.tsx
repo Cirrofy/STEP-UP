@@ -25,7 +25,7 @@ function PaymentSuccessModal({ isOpen, onClose, isSub }: { isOpen: boolean; onCl
           <h2 className="text-2xl font-bold text-[#344675] mb-2">Payment Successful!</h2>
           <p className="text-muted-foreground mb-6">
             {isSub 
-              ? "Your 1-Month Subscription has been confirmed! 4 lessons have been added to your schedule." 
+              ? "Your 1-Month Subscription has been confirmed! 4 lessons have been added to your subscription pool." 
               : "Your lesson has been booked successfully."} You will be redirected to the homepage.
           </p>
           <Button onClick={onClose} className="bg-[#7492c9] text-white hover:bg-[#5b78b0] font-bold">
@@ -37,7 +37,6 @@ function PaymentSuccessModal({ isOpen, onClose, isSub }: { isOpen: boolean; onCl
   )
 }
 
-// 1. Ubah nama komponen utama menjadi PaymentContent
 function PaymentContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -53,7 +52,9 @@ function PaymentContent() {
   const bookingType = searchParams.get("type") || "single"
   const isSubscription = bookingType === "subscription"
 
-  const [duration, setDuration] = useState<"1" | "2">(paramDuration as "1" | "2")
+  // FIX: Durasi sekarang langsung mengunci pilihan dari modal jadwal sebelumnya, tidak bisa diubah di sini
+  const duration = paramDuration
+
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -84,7 +85,6 @@ function PaymentContent() {
         if (error) throw error
 
         if (profile) {
-          // FIX: Bypass TypeScript error untuk data relasi Supabase
           const userData = profile.users as any;
 
           setTutorData({
@@ -112,20 +112,12 @@ function PaymentContent() {
 
   // --- KALKULASI HARGA ---
   const price = tutorData?.price || 0
-  const sessionCount = isSubscription ? 4 : 1 // 4 Minggu jika subs, 1 jika single
+  const sessionCount = isSubscription ? 4 : 1 
   const total = price * parseInt(duration) * sessionCount
 
   const formatTimeForDB = (timeStr: string, addHours: number = 0) => {
     const hour = parseInt(timeStr.split('.')[0]) + addHours
     return `${hour.toString().padStart(2, '0')}:00:00`
-  }
-
-  // FIX: Mem-parsing string tanggal lengkap dari Booking Modal dengan aman
-  const formatDateForDB = (dateStr: string) => {
-    const dateObj = new Date(dateStr)
-    // Penyesuaian Timezone agar tidak mundur 1 hari (karena waktu UTC)
-    dateObj.setMinutes(dateObj.getMinutes() - dateObj.getTimezoneOffset())
-    return dateObj.toISOString().split('T')[0]
   }
 
   const handlePayment = async () => {
@@ -138,42 +130,45 @@ function PaymentContent() {
 
     try {
       const baseDate = new Date(lessonDate)
-      const lessonsToInsert = []
 
-      // Generate 1 atau 4 jadwal tergantung status subscription
-      for (let i = 0; i < sessionCount; i++) {
-        const scheduleDate = new Date(baseDate)
-        scheduleDate.setDate(scheduleDate.getDate() + (i * 7)) // Tambah 7 hari tiap loop (mingguan)
-        scheduleDate.setMinutes(scheduleDate.getMinutes() - scheduleDate.getTimezoneOffset()) // Fix Timezone Offset
-
-        lessonsToInsert.push({
-          student_id: studentId,
-          tutor_id: tutorData.id,
-          schedule_date: scheduleDate.toISOString().split('T')[0],
-          start_time: formatTimeForDB(lessonTime),
-          end_time: formatTimeForDB(lessonTime, parseInt(duration)),
-          duration_hours: parseInt(duration),
-          total_price: price * parseInt(duration), // Harga PER pertemuan untuk record lessons
-          status: 'Upcoming'
-        })
-      }
-
-      // 1. Insert ke tabel lessons (1 atau 4 row sekaligus)
-      const { error: lessonError } = await supabase.from('lessons').insert(lessonsToInsert)
-      if (lessonError) throw lessonError
-
-      // 2. Jika Subscription, masukkan juga ke tabel subscriptions
+      // FIX LOGIKA PERBEDAAN BOOKING SINGLE VS SUBSCRIPTION
       if (isSubscription) {
         const renewalDate = new Date(baseDate)
-        renewalDate.setMonth(renewalDate.getMonth() + 1) // 1 bulan dari sekarang
+        renewalDate.setMonth(renewalDate.getMonth() + 1) // Perpanjang otomatis 1 bulan ke depan
         renewalDate.setMinutes(renewalDate.getMinutes() - renewalDate.getTimezoneOffset())
 
-        await supabase.from('subscriptions').insert({
-          student_id: studentId,
-          tutor_id: tutorData.id,
-          status: 'Active',
-          renewal_date: renewalDate.toISOString().split('T')[0]
-        })
+        // Jika subscription, masukkan 4 kuota pelajaran ke kolom lessons_left
+        const { error: subError } = await supabase
+          .from('subscriptions')
+          .insert({
+            student_id: studentId,
+            tutor_id: tutorData.id,
+            status: 'Active',
+            lessons_left: 4, // Kuota mengendap di pool subscription
+            renewal_date: renewalDate.toISOString().split('T')[0]
+          })
+          
+        if (subError) throw subError
+
+      } else {
+        // Jika single booking, buat 1 baris jadwal di tabel lessons
+        const scheduleDate = new Date(baseDate)
+        scheduleDate.setMinutes(scheduleDate.getMinutes() - scheduleDate.getTimezoneOffset())
+
+        const { error: lessonError } = await supabase
+          .from('lessons')
+          .insert({
+            student_id: studentId,
+            tutor_id: tutorData.id,
+            schedule_date: scheduleDate.toISOString().split('T')[0],
+            start_time: formatTimeForDB(lessonTime),
+            end_time: formatTimeForDB(lessonTime, parseInt(duration)),
+            duration_hours: parseInt(duration),
+            total_price: price * parseInt(duration),
+            status: 'Upcoming'
+          })
+
+        if (lessonError) throw lessonError
       }
 
       // 3. Tambahkan Saldo Tutor
@@ -194,7 +189,6 @@ function PaymentContent() {
 
       if (updateBalanceError) throw updateBalanceError
 
-      // 4. Tampilkan Modal Sukses
       setShowSuccessModal(true)
       
     } catch (err: any) {
@@ -211,20 +205,19 @@ function PaymentContent() {
 
   const handleSuccessClose = () => {
     setShowSuccessModal(false)
-    router.push("/student") 
+    router.push("/student/my-lessons") 
   }
 
   useEffect(() => {
     if (showSuccessModal) {
-      const timer = setTimeout(() => router.push("/student"), 3000)
+      const timer = setTimeout(() => router.push("/student/my-lessons"), 3000)
       return () => clearTimeout(timer)
     }
   }, [showSuccessModal, router])
 
   if (!tutorData) return <div className="min-h-screen flex items-center justify-center text-[#344675] font-bold">Loading payment details...</div>
 
-  // Pisahkan string tanggal untuk UI
-  const dateParts = lessonDate.replace(',', '').split(' ') // "April 28 2026" -> ["April", "28", "2026"]
+  const dateParts = lessonDate.replace(',', '').split(' ')
 
   return (
     <div className="min-h-screen bg-[#e8f1f8]">
@@ -256,7 +249,7 @@ function PaymentContent() {
             <Card className="border-none shadow-md">
               <CardContent className="p-6">
                 <h3 className="font-bold text-[#344675] mb-4">
-                  {isSubscription ? "Subscription Starting Date" : "Trial Lesson Details"}
+                  {isSubscription ? "Subscription Details" : "Trial Lesson Details"}
                 </h3>
                 <div className="flex items-center gap-4">
                   <div className="text-center px-4 py-2 bg-[#d4e1f4] rounded-lg border border-[#aabce6]">
@@ -265,11 +258,11 @@ function PaymentContent() {
                   </div>
                   <div>
                     <p className="font-bold text-[#344675]">
-                      {isSubscription ? "First Lesson" : "Lesson Date"}: {lessonDate} <br/> 
-                      {lessonTime}-{parseInt(lessonTime) + parseInt(duration)}.00
+                      {isSubscription ? "Starting Plan Date" : "Lesson Date"}: {lessonDate} <br/> 
+                      {lessonTime}-{parseInt(lessonTime) + parseInt(duration)}.00 ({duration} Hour)
                     </p>
-                    <p className="text-sm text-gray-500 font-medium">
-                      {isSubscription ? "Repeats every week at this time." : "Don't Forget To Join The Meet!"}
+                    <p className="text-sm text-gray-500 font-medium mt-1">
+                      {isSubscription ? "4 classes pool will be credited into your dashboard." : "Don't Forget To Join The Meet!"}
                     </p>
                   </div>
                 </div>
@@ -278,7 +271,7 @@ function PaymentContent() {
 
             <Card className="border-none shadow-md">
               <CardContent className="p-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-6">
                   <h3 className="font-bold text-[#344675]">Checkout Info</h3>
                   {isSubscription && (
                     <span className="flex items-center gap-1 text-xs font-bold bg-[#d4e1f4] text-[#344675] px-2 py-1 rounded">
@@ -286,21 +279,18 @@ function PaymentContent() {
                     </span>
                   )}
                 </div>
-                
-                <div className="flex border-b-2 border-gray-100 mb-4">
-                  <button onClick={() => setDuration("1")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "1" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>1 Hour / Session</button>
-                  <button onClick={() => setDuration("2")} className={cn("flex-1 pb-3 text-center font-bold border-b-2 transition-colors", duration === "2" ? "text-[#7492c9] border-[#7492c9]" : "text-gray-400 border-transparent hover:text-gray-600")}>2 Hours / Session</button>
-                </div>
 
-                <div className="space-y-4 mt-6">
+                {/* FIX: Tab Selector 1 Hour / 2 Hour lama DILENYAPKAN dari halaman ini */}
+                
+                <div className="space-y-4">
                   <div className="flex justify-between items-center text-[#344675]">
                     <span className="font-semibold">Rate per Session ({duration} Hr)</span>
                     <span className="font-bold">Rp {(price * parseInt(duration)).toLocaleString('id-ID')}</span>
                   </div>
                   {isSubscription && (
                     <div className="flex justify-between items-center text-[#344675]">
-                      <span className="font-semibold">Number of Sessions (1 Month)</span>
-                      <span className="font-bold">x 4 Weeks</span>
+                      <span className="font-semibold">Subscription Bundle Pack</span>
+                      <span className="font-bold">x 4 Lessons</span>
                     </div>
                   )}
                   <div className="flex justify-between pt-4 border-t-2 border-gray-100">
@@ -361,7 +351,6 @@ function PaymentContent() {
   )
 }
 
-// 2. Buat komponen default export yang membungkus konten dengan Suspense
 export default function PaymentPage() {
   return (
     <Suspense fallback={

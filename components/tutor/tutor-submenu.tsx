@@ -8,6 +8,7 @@ const menuItems = [
   { label: "Home", href: "/tutor" },
   { label: "Messages", href: "/tutor/messages" },
   { label: "My Lessons", href: "/tutor/my-lessons" },
+  { label: "Materials", href: "/tutor/materials" },
 ]
 
 export function TutorSubmenu() {
